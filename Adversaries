@@ -1,0 +1,163 @@
+$ErrorActionPreference="SilentlyContinue"
+
+function main{
+	# Default Location
+	Set-Location -Path "C:\"
+
+	# Get folder/file paths
+	[String[]]$paths = 	"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup"
+						
+	[string[]]$usersPaths = "AppData",
+							"AppData\Roaming",
+							"AppData\Local", 
+							"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
+							
+	$paths += getUserFilePaths -usersPaths $usersPaths
+	$paths += getDrives
+	
+	# Get registry keys
+	[string[]]$regKeys	= 	"hklm:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run",
+							"hklm:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+							"hkcu:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run",
+							"hkcu:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+							
+	$keys = getUserRegistryKeys -regKeys $regKeys
+	
+	# Test paths and keys
+	$outFiles = findFileAdversaries -paths $paths
+	$outKeys = findRegAdversaries -keys $keys
+	
+	# Write Registry
+	writeToRegistry -outFiles $outFiles -outKeys $outKeys
+}
+
+# Find file adversaries
+function findFileAdversaries{
+
+	param(
+		$paths
+	)
+	
+	# Initialize output array
+	$adversaries = @()
+	
+	# Find adversaries with regex
+	foreach($path in $paths){
+
+		# Find adversaries
+		$adversaries += Get-ChildItem -Path $path | Where-Object{$_.FullName -match "[a-z0-9]{16}\.exe"}
+		$adversaries += Get-ChildItem -Path $path | Where-Object{$_.FullName -match "[sS]{1}nkb0ptz.*"}
+	}
+	
+	return $adversaries
+}
+
+# Find registry adversaries
+function findRegAdversaries{
+
+	param(
+		$keys
+	)
+	
+	# Initialize output array
+	$adversaries = @()
+	
+	# Find adversaries with regex
+	$adversaries += $keys | Where-Object{$_ -cmatch ".*\\[a-z0-9]{16}.*"}
+	$adversaries += $keys | Where-Object{$_ -match ".*\\[sS]{1}nkb0ptz.*"}
+	$adversaries = $adversaries | Where-Object{$_ -ne $null}
+
+	return $adversaries
+}
+
+# Enumerate user specific paths
+function getUserFilePaths{
+
+	param(
+		[string[]]$usersPaths
+	)	
+
+	# Set working directory
+	Set-Location -Path "C:\Users"
+	$users = Get-ChildItem . | Where-Object{$_.Attributes -like "*Directory*"}
+	
+	# Intialize output array
+	[string[]]$paths = @()
+	
+	# Generate file paths
+	foreach($user in $users){
+		foreach($userPath in $usersPaths){
+			$paths += "C:\Users\" + $user.Name + "\" + $userPath
+		}
+	}
+	
+	return $paths
+}
+
+# Enumerate user registry keys
+function getUserRegistryKeys{
+
+	param(
+		$regKeys
+	)
+								
+	[String[]]$keys = @()
+	
+	# Get all registry values in a specified reg key
+	foreach($regKey in $regKeys){
+		$properties = (Get-Item -Path $regKey).Property
+		
+		foreach($property in $properties){
+			$keys += $regKey + "\" + $property
+		}	
+	}
+	
+	return $keys
+}
+
+# Enumerate all drive letters
+function getDrives{
+	
+	$drives = Get-PSDrive | Where-Object{$_.Root -cmatch "[A-Z]{1}\:\\"}
+	
+	[string[]]$paths = @()
+	
+	foreach($drive in $drives){
+		$paths += $drive.Root
+	}
+	
+	return $paths
+}
+
+# Write to registry
+function writeToRegistry{
+	
+	param(
+		$outFiles,
+		$outKeys
+	)
+	
+	# Prep Registry	
+	if(!(Test-Path -Path "HKLM:\SOFTWARE\Wow6432Node\Policies\Cosby")){
+		New-Item -Path "HKLM:\SOFTWARE\Wow6432Node\Policies" -Name Cosby
+	}
+	
+	# Set working directory
+	Set-Location "HKLM:\SOFTWARE\Wow6432Node\Policies\Cosby"
+	
+	[string]$entryName = ""
+	
+	# Output file paths to registry
+	foreach($outFile in $outFiles){
+		$entryName = $outFile.Name
+		New-ItemProperty -Path . -Name $outFile.FullName -Value $outFile.FullName
+	}
+	
+	# Output reg keys to registry
+	foreach($outKey in $outKeys){
+		$entryName = $outKey
+		New-ItemProperty -Path . -Name $entryName -Value $outKey
+	}
+}
+
+main
