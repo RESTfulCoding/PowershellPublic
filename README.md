@@ -27,3 +27,6 @@ Location of the application server is determined through the IP4 route table whi
     [string]$strShare = $networks.Get_Item($strGateway)
     $smb = new-object -ComObject WScript.Network
     $smb.MapNetworkDrive("Z:", $strShare, $false, $credSAUsername, $credSAPassword)
+    
+# ExceptionListWrite.ps1
+This script modifies the exception security list so the user is not blocked because of a security check.
